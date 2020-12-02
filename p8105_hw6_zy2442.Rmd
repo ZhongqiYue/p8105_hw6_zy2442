@@ -1,338 +1,131 @@
 ---
-title: "Homework 5"
+title: "Homework 6"
 author: Zhongqi Yue
 output: github_document
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include=FALSE}
 library(tidyverse)
+library(viridis)
 knitr::opts_chunk$set(
-  fig.width = 6,
-  fig.asp = .6,
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
   out.width = "90%"
 )
-theme_set(theme_minimal() + theme(legend.position = "bottom"))
 options(
   ggplot2.continuous.colour = "viridis",
   ggplot2.continuous.fill = "viridis"
 )
-scale_colour_discrete = scale_color_viridis_d
+scale_colour_discrete = scale_colour_viridis_d
 scale_fill_discrete = scale_fill_viridis_d
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
 ```
 
-## Problem 1
+### Due date
 
-Read in the data.
+Due: December 4 at 10:00pm. 
 
-```{r, warning = FALSE}
+### Points
+
+* Problem 0: 20 points
+* Problem 1: -- points
+* Problem 2: 40 points
+* Problem 3: 40 points
+
+
+### Problem 0
+
+This "problem" focuses on structure of your assignment, including the use of R Markdown to write reproducible reports, the use of R Projects to organize your work, the use of relative paths to load data, and the naming structure for your files. 
+
+To that end: 
+
+* create a public GitHub repo + local R Project for this assignment
+* write solutions using a .Rmd file that outputs a `github_document` / .md file
+* submit a link to your repo via Courseworks
+
+Your solutions to Problems 1 and 2 should be implemented in your .Rmd file, and your git commit history should reflect the process you used to solve these Problems. 
+
+For Problem 0, we will assess adherence to the instructions above regarding repo structure, git commit history, and whether we are able to knit your .Rmd to ensure that your work is reproducible. Adherence to appropriate styling and clarity of code will be assessed in Problems 1+ using the homework [style rubric](homework_style_rubric.html). 
+
+This homework includes figures; the readability of your embedded plots (e.g. font sizes, axis labels, titles) will be assessed in Problems 1+.
+
+```{r load_libraries}
+library(tidyverse)
+library(modelr)
+library(p8105.datasets)
+```
+
+### Problem 1
+
+```{r}
 homicide_df = 
-  read_csv("homicide_data/homicide-data.csv") %>% 
+  read_csv("data/homicide-data.csv", na = c("", "NA", "Unknown")) %>% 
   mutate(
-    city_state = str_c(city, state, sep = "_"),
-    resolved = case_when(
-      disposition == "Closed without arrest" ~ "unsolved",
-      disposition == "Open/No arrest"        ~ "unsolved",
-      disposition == "Closed by arrest"      ~ "solved",
-    )
+    city_state = str_c(city, state, sep = ", "),
+    victim_age = as.numeric(victim_age),
+    resolution = case_when(
+      disposition == "Closed without arrest" ~ 0,
+      disposition == "Open/No arrest"        ~ 0,
+      disposition == "Closed by arrest"      ~ 1)
   ) %>% 
-  select(city_state, resolved) %>% 
-  filter(city_state != "Tulsa_AL")
+  filter(
+    victim_race %in% c("White", "Black"),
+    city_state != "Tulsa, AL") %>% 
+  select(city_state, resolution, victim_age, victim_race, victim_sex)
 ```
 
 
-Let's look at this a bit
+Start with one city.
 
-```{r, warning = FALSE}
-aggregate_df = 
+```{r}
+baltimore_df =
   homicide_df %>% 
-  group_by(city_state) %>% 
-  summarize(
-    hom_total = n(),
-    hom_unsolved = sum(resolved == "unsolved")
-  )
-```
+  filter(city_state == "Baltimore, MD")
 
-Can I do a prop test for a single city?
-
-```{r, warning = FALSE}
-prop.test(
-  aggregate_df %>% filter(city_state == "Baltimore_MD") %>% pull(hom_unsolved), 
-  aggregate_df %>% filter(city_state == "Baltimore_MD") %>% pull(hom_total)) %>% 
-  broom::tidy()
-```
-
-Try to iterate ........
-
-```{r, warning = FALSE}
-results_df = 
-  aggregate_df %>% 
+glm(resolution ~ victim_age + victim_race + victim_sex, 
+    data = baltimore_df,
+    family = binomial()) %>% 
+  broom::tidy() %>% 
   mutate(
-    prop_tests = map2(.x = hom_unsolved, .y = hom_total, ~prop.test(x = .x, n = .y)),
-    tidy_tests = map(.x = prop_tests, ~broom::tidy(.x))
+    OR = exp(estimate),
+    CI_lower = exp(estimate - 1.96 * std.error),
+    CI_upper = exp(estimate + 1.96 * std.error)
   ) %>% 
-  select(-prop_tests) %>% 
-  unnest(tidy_tests) %>% 
-  select(city_state, estimate, conf.low, conf.high)
+  select(term, OR, starts_with("CI")) %>% 
+  knitr::kable(digits = 3)
 ```
 
 
+Try this across cities.
 
-```{r, warning = FALSE}
-results_df %>% 
-  mutate(city_state = fct_reorder(city_state, estimate)) %>% 
-  ggplot(aes(x = city_state, y = estimate)) +
+```{r}
+models_results_df = 
+  homicide_df %>% 
+  nest(data = -city_state) %>% 
+  mutate(
+    models = 
+      map(.x = data, ~glm(resolution ~ victim_age + victim_race + victim_sex, data = .x, family = binomial())),
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(city_state, results) %>% 
+  unnest(results) %>% 
+  mutate(
+    OR = exp(estimate),
+    CI_lower = exp(estimate - 1.96 * std.error),
+    CI_upper = exp(estimate + 1.96 * std.error)
+  ) %>% 
+  select(city_state, term, OR, starts_with("CI")) 
+```
+
+```{r}
+models_results_df %>% 
+  filter(term == "victim_sexMale") %>% 
+  mutate(city_state = fct_reorder(city_state, OR)) %>% 
+  ggplot(aes(x = city_state, y = OR)) + 
   geom_point() + 
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
 
-
-
-```{r, error = TRUE, warning = FALSE}
-city_prop_test = function(df) {
-  
-  n_unsovled ...
-  n_total ... 
-  
-  prop.test(.....)
-  
-}
-homicide_df = 
-  read_csv("data/homicide-data.csv") %>% 
-  mutate(
-    city_state = str_c(city, state, sep = "_"),
-    resolved = case_when(
-      disposition == "Closed without arrest" ~ "unsolved",
-      disposition == "Open/No arrest"        ~ "unsolved",
-      disposition == "Closed by arrest"      ~ "solved",
-    )
-  ) %>% 
-  select(city_state, resolved) %>% 
-  filter(city_state != "Tulsa_AL") %>% 
-  nest(data = resolved)
-```
-
-## Problem 2
-
-#### import and tidy the dataset 
-```{r, warning = FALSE}
-# Start with a dataframe containing all file names
-path_df = 
-  tibble(
-    path = list.files("lda_data"),
-  ) %>% 
-  mutate(
-    path = str_c("lda_data/", path),
-# Iterate over file names and read in data for each subject using purrr::map and saving the result as a new variable in the dataframe.
-    data = map(.x = path, ~read_csv(.x))
-  ) %>% 
-  unnest(data) 
-
-# Create a tidy dataframe containing data from all participants, including the subject ID, arm, and observations over time
-tidy_path_df =
-  path_df%>% 
-  rename(arm_subject_id = path) %>% 
-  mutate(
-    arm_subject_id= str_replace(arm_subject_id, "lda_data/",""),
-    arm_subject_id = str_replace(arm_subject_id, ".csv",""),
-    ) %>% 
-  separate(arm_subject_id, into = c("arm","subject_id")) %>% 
-  mutate(
-    arm = str_replace(arm, "con","control"),
-    arm = str_replace(arm, "exp", "experiment")
-  ) %>% 
-  pivot_longer(
-    week_1 : week_8,
-    names_to = "week_number",
-    values_to = "observation"
-  )
-```
-
-#### Make a spaghetti plot showing observations on each subject over time, and comment on differences between groups.
-```{r, warning = FALSE}
-# Set a plot dataframe which contains a variable combining the "arm" and "subject_id".
-plot_df = 
-  tidy_path_df %>% 
-  mutate(arm_id = str_c(arm, subject_id, sep = "_"))
-
-# Make the spaghetti plot.
-plot = 
-  plot_df %>% 
-  ggplot(aes(x = week_number, y = observation, group = arm_id, color = arm)) +
-  geom_line() +
-  labs(
-    title = "Observations on each subject over time",
-    x = "Time",
-    y = "Observation"
-    ) + 
-  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1))
-  
-plot 
-
-```
-
-* As the spaghetti plot shown, the observations in control group seem to be pretty steady compared to the experiment group whose observations seem to have a increasing pattern over time. Additionally, the overall observation values of the experiment group seem to be higher than that of the control group. 
-
-# Problem 3
-#### Set the initial design elements and write the function to do the t-test.
-```{r, warning = FALSE}
-sample = function(samp_size = 30, mu, sigma = 5) {
-  samp_data = 
-    tibble(
-      samp = rnorm(n = samp_size, mean = mu, sd = sigma)
-    )
-  
-  samp_result =
-  samp_data %>% 
-  summarize(
-    mu_hat = mean(samp),
-    t_test = map(.x = samp, ~t.test(samp, y = NULL, alternative = "two.sided", paired = FALSE, var.equal = FALSE, conf.level = 0.95)),
-    tidy_tests = map(.x = t_test, ~broom::tidy(.x))
-  ) %>% 
-    unnest(tidy_tests) %>% 
-    select(mu_hat,estimate, p.value)
-  
-  return(samp_result)
-  
-}
-
-```
-
-#### Perform simulation for μ={0,1,2,3,4,5,6}.
-```{r, warning = FALSE}
-t_tests_results =
-  tibble(
-  mu_value = c(0,1,2,3,4,5,6)
-) %>% 
-  mutate(
-    output_list = map(.x = mu_value, ~ rerun(5000, sample(mu = .x))),
-    t_tests_df = map(output_list, bind_rows)
-  ) %>% 
-  select(-output_list) %>% 
-  unnest(t_tests_df) 
-
-# Define the conclusion of the test and count the number of "reject" conclusion.
-conclusion_df = 
-  t_tests_results %>% 
-  mutate(
-    conclusion = case_when(
-      p.value >= 0.05 ~ "Fail to reject",
-      p.value < 0.05 ~ "Reject"
-  )) %>% 
-  select(mu_value, conclusion) %>%
-  group_by(mu_value) %>% 
-  summarize(
-    con_total = n(),
-    con_reject = sum(conclusion == "Reject")
-  ) 
-
-# Perform the prop-test to obtain the proportion of times the null was rejected of each mu.
-power_df = 
-  conclusion_df %>% 
-   mutate(
-    prop_tests = map2(.x = con_reject, .y = con_total, ~prop.test(x = .x, n = .y)),
-    tidy_tests = map(.x = prop_tests, ~broom::tidy(.x))
-  ) %>% 
-  select(-prop_tests) %>% 
-  unnest(tidy_tests) %>% 
-  select(mu_value, estimate, conf.low, conf.high)
-```
-
-#### Make a plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of μ on the x axis. Describe the association between effect size and power.
-```{r, warning = FALSE}
-# Make a plot --- power of the test vs. mu values.
-power_df %>% 
-  mutate(mu_value = as.factor(mu_value),
-         mu_value = fct_reorder(mu_value, estimate)) %>% 
-  ggplot(aes(x = mu_value, y = estimate)) +
-  geom_point() + 
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) + 
-  labs(
-    title = "The proportion of rejected null hypothesis with varied mu values",
-    x = "mu values",
-    y = "The power of the test"
-    ) +
-  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1))
-  
-```
-
-* As shown by the plot, it is obvious to see that as the effect size (mu value) increases, the power of test will also increase. 
-
-#### Make a plot showing the average estimate of μ̂  on the y axis and the true value of μ on the x axis.
-```{r, warning = FALSE}
-# Write a function to take the average of mu bar for each tru mu value.
-average = function(x) {
-  
-  t_tests_results %>% 
-    filter(mu_value == x) %>% 
-    summarize(
-      mu_value,
-      average_estimate = mean(mu_hat)
-    )
-  
-}
-
-# Bind the result of each true mu value to make a new dataframe.
-average_df = 
-  bind_rows(average(0), average(1), average(2), average(3), average(4), average(5), average(6))
-
-# Make the first plot.
-plot1 = 
-  average_df %>% 
-      mutate(mu_value = as.factor(mu_value)) %>% 
-      ggplot(aes(x = mu_value, y = average_estimate)) +
-      geom_point() +
-      labs(
-        title = "The average estimate of μ with varied mu values",
-        x = "True mu values",
-        y = "The average estimate of μ̂"
-        ) +
-  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1))
-
-plot1
-
-```
-
-#### Make a second plot the average estimate of μ̂  only in samples for which the null was rejected on the y axis and the true value of μ on the x axis. 
-```{r, warning = FALSE}
-# Write a function to take the average of mu bar only in samples for which the null was rejected for each true mu value.
-average_reject = function (x) {
-  
-  t_tests_results %>%
-    filter(mu_value == x) %>% 
-    mutate(
-    conclusion = case_when(
-      p.value >= 0.05 ~ "Fail to reject",
-      p.value < 0.05 ~ "Reject"
-  )) %>% 
-  select(mu_value, mu_hat, conclusion) %>% 
-  filter(conclusion == "Reject") %>% 
-  summarize(
-    mu_value,
-    average_estimate = mean(mu_hat)
-  )
-  
-}
-
-# Bind the result of each true mu value to make a new dataframe.
-average_reject_df = 
-   bind_rows(average_reject(0), average_reject(1), average_reject(2), average_reject(3), average_reject(4), average_reject(5), average_reject(6))
-
-# Make the second plot.
-plot2 = 
-  average_reject_df %>% 
-  mutate(mu_value = as.factor(mu_value)) %>% 
-      ggplot(aes(x = mu_value, y = average_estimate)) +
-      geom_point() +
-      labs(
-        title = "The average estimate of μ for rejected results with varied mu values",
-        x = "True mu values",
-        y = "The average estimate of μ̂"
-        ) +
-  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1))
-
-plot2
-
-```
-
-* As shown by the second plot, the sample average of μ̂  across tests for which the null is rejected approximately equal to the true value of μ while the effect size (true mean values) is increasing. As shown by the previous test-power plot, as the effect size increases, the proportion of times the null was rejected also increases. Therefore, when the effect size increases, the null hypothesis (mu = 0) is more likely to be rejected, which means that the estimated mu values will depart more from zero. Thus, as the effect size increases, the estimated mu value for which the null is rejected will be more closer to its true mu value. 
