@@ -163,29 +163,28 @@ t(table_NA) %>%
 Fit a model
 
 ```{r}
+# Fit a model based on the combination of a data-driven model-building process and a hypothesized structure for the factors that underly birthweight. 
 model_fit = 
-  lm(bwt ~ mrace + smoken, data = baby_df)
+  lm(bwt ~ smoken + factor(mrace), data = baby_df)
 ```
 
 Show a plot of model residuals against fitted values 
 
 ```{r}
-smoken_plot = 
-  baby_df %>% 
+baby_df %>% 
   modelr::add_residuals(model_fit) %>% 
-  ggplot(aes(x = smoken, y = resid)) + 
-  geom_point()
-
-smoken_plot
-
-mrace_plot = 
-  baby_df %>% 
-  modelr::add_residuals(model_fit) %>% 
-  ggplot(aes(x = mrace, y = resid)) + 
-  geom_point()
-
-mrace_plot
+  modelr::add_predictions(model_fit) %>% 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() +
+  labs(
+    title = "Residual vs. fitted values",
+    x = "Fitted values",
+    y = "Residuals"
+  )
 ```
+
+Based on the Residual vs. Fitted values plot, we can see that the plot has random pattern and almost evenly distributed around 0, which suggests that the assumption that the relationship is linear is reasonable. Additionally, residuals form a horizontal 'band' above and below 0, which indicates the equal variance of the error terms. Otherwise, there are almost no 'unusual' values stand out from the random pattern, which indicates there might be no potential outliers. Therefore, this model follow the assumption of the homoscedasticity.
+
 
 Compare your model to two others:
 
@@ -195,7 +194,7 @@ Compare your model to two others:
 ```{r}
 # Fit the models
 me_mod = lm(bwt ~ blength + gaweeks, data = baby_df)
-twi_mod = lm(bwt ~ bhead + blength + babysex, data = baby_df)
+twi_mod = lm(bwt ~ bhead*blength*babysex, data = baby_df)
 ```
 
 ```{r}
@@ -211,9 +210,9 @@ cv_df =
 cv_df = 
   cv_df %>% 
   mutate(
-    model_fit  = map(train, ~lm(bwt ~ mrace + smoken, data = .x)),
+    model_fit  = map(train, ~lm(bwt ~ smoken + factor(mrace), data = .x)),
     me_mod     = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
-    twi_mod  = map(train, ~lm(bwt ~ bhead + blength + babysex, data = .x))) %>% 
+    twi_mod  = map(train, ~lm(bwt ~ bhead*blength*babysex, data = .x))) %>% 
   mutate(
     rmse_modelfit = map2_dbl(model_fit, test, ~rmse(model = .x, data = .y)),
     rmse_me    = map2_dbl(me_mod, test, ~rmse(model = .x, data = .y)),
@@ -231,7 +230,8 @@ cv_df %>%
   ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
 
-* Based on the results, it is clear that the three-way interaction model gains the best predictive accuracy even though it still has a small portion of overlap with main effect model. 
+Based on the results, it is clear that the three-way interaction model gains the best predictive accuracy even though it still has a small portion of overlap with main effect model. However, my model has the distinctly large prediction error, which indicates the multiple linear model of the combination of 'mrace' and 'smoken' has the least predictive accuracy.
+
 
 # Problem 3
 
@@ -305,7 +305,7 @@ beta_1_df =
 
 new_log_results = 
   bind_cols(beta_0_df, beta_1_df) %>% 
-  mutate(log = log(beta_0 * beta_1))
+  mutate(log = log10(beta_0 * beta_1))
 
 # Plot the distribution of the estimates for these two quantities
 plot1 = 
@@ -329,7 +329,8 @@ plot2 =
 
 ```
 
-* The distributions of these two quantities seems to be normal distributed since both of these two plots are in bell shape with only one peak.The distribution of r square seems to have smaller mu since its peak's value on the x-axis is smaller than that of the log distribution. Additionally, the distribution of r square seems to have smaller sigma value since its peak value on the y-axis is greater than that of the log distribution.
+The distributions of these two quantities seems to be normal distributed since both of these two plots are in bell shape with only one peak.The distribution of log seems to have smaller mu since its peak's value on the x-axis is smaller than that of the r squared distribution. Additionally, the distribution of r square seems to have smaller sigma value since its peak value on the y-axis is greater than that of the log distribution.
+
 
 Identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r̂^ 2 and log(β̂ 0∗β̂ 1).
 
@@ -350,4 +351,4 @@ new_log_results %>%
 ```
 
 * The 95% confidence interval for r square is identified as (`r rsquare_results %>% summarize(CI_lower = quantile(r.squared, 0.025), CI_upper = quantile(r.squared, 0.975)) %>% pull(CI_lower)`, `r rsquare_results %>% summarize(CI_lower = quantile(r.squared, 0.025), CI_upper = quantile(r.squared, 0.975)) %>% pull(CI_upper)`).
-* The 95% confidence interval for log(β̂ 0∗β̂ 1) is identified as (`r new_log_results %>% summarize( CI_lower = quantile(log, 0.025), CI_upper = quantile(log, 0.975)) %>% pull(CI_lower)`, `r new_log_results %>% summarize( CI_lower = quantile(log, 0.025), CI_upper = quantile(log, 0.975)) %>% pull(CI_upper)`) .
+* The 95% confidence interval for log(β̂ 0∗β̂ 1) is identified as (`r new_log_results %>% summarize( CI_lower = quantile(log, 0.025), CI_upper = quantile(log, 0.975)) %>% pull(CI_lower)`, `r new_log_results %>% summarize( CI_lower = quantile(log, 0.025), CI_upper = quantile(log, 0.975)) %>% pull(CI_upper)`).
