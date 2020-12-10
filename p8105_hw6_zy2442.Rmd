@@ -218,6 +218,19 @@ cv_df =
     rmse_me    = map2_dbl(me_mod, test, ~rmse(model = .x, data = .y)),
     rmse_twi = map2_dbl(twi_mod, test, ~rmse(model = .x, data = .y)))
 
+## Calculate mean predication error of these three models.
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  group_by(model) %>% 
+  summarize(avg_rmse = mean(rmse)) %>% 
+  knitr::kable()
+  
+
 ## Finally, I’ll plot the prediction error distribution for each candidate model.
 cv_df %>% 
   select(starts_with("rmse")) %>% 
@@ -230,7 +243,7 @@ cv_df %>%
   ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
 
-Based on the results, it is clear that the three-way interaction model gains the best predictive accuracy even though it still has a small portion of overlap with main effect model. However, my model has the distinctly large prediction error, which indicates the multiple linear model of the combination of 'mrace' and 'smoken' has the least predictive accuracy.
+Based on the results, it is clear that the three-way interaction model gains the best predictive accuracy. Even though it has a small portion of overlap with main effect model, it still has the smallest mean predication error. However, my model has the distinctly large prediction error, which indicates the multiple linear model of the combination of 'mrace' and 'smoken' has the least predictive accuracy.
 
 
 # Problem 3
