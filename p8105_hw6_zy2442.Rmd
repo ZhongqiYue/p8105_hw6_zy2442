@@ -183,7 +183,7 @@ baby_df %>%
   )
 ```
 
-Based on the Residual vs. Fitted values plot, we can see that the plot has random pattern and almost evenly distributed around 0, which suggests that the assumption that the relationship is linear is reasonable. Additionally, residuals form a horizontal 'band' above and below 0, which indicates the equal variance of the error terms. Otherwise, there are almost no 'unusual' values stand out from the random pattern, which indicates there might be no potential outliers. Therefore, this model follow the assumption of the homoscedasticity.
+Based on the Residual vs. Fitted values plot, we can see that the plot has random pattern and almost evenly distributed around 0 (bounce around 0), which suggests that the assumption that the relationship is linear might be reasonable. Additionally, residuals form a horizontal 'band' above and below 0, which indicates the equal variance of the error terms. Otherwise, there are almost no 'unusual' values stand out from the random pattern, which indicates there might be no potential outliers. Therefore, this model might follow the assumption of the homoscedasticity based on the plot.
 
 
 Compare your model to two others:
